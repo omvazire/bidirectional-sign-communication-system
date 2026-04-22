@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Language Translator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ stylesheet_url }}">
+</head>
+<body>
+    <div class="page-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <p class="eyebrow">Real-Time Sign Recognition</p>
+                <h1>Sign Language Translator</h1>
+                <p class="subcopy">A browser-first workspace for live sign detection, stable sentence building, and speech playback that works both locally and on a hosted deployment.</p>
+            </div>
+            <div class="topbar-status">
+                <span class="pill" id="system-status">Booting</span>
+                <span class="pill neutral" id="tts-status">TTS: Browser</span>
+            </div>
+        </header>
+
+        <main class="layout">
+            <section class="video-stage panel">
+                <div class="stage-head">
+                    <div>
+                        <p class="panel-kicker">Live Camera</p>
+                        <h2>Webcam Stream</h2>
+                    </div>
+                    <div class="status-chip">
+                        <span class="dot" id="status-dot"></span>
+                        <span id="hands-status">Hands: --</span>
+                    </div>
+                </div>
+
+                <div class="stream-frame" id="stream-frame">
+                    <div class="stream-loader" id="stream-loader">
+                        <div class="loader-core">
+                            <span class="loader-ring"></span>
+                            <p class="loader-title">Connecting to camera</p>
+                            <p class="loader-copy" id="loader-copy">Requesting browser camera access...</p>
+                        </div>
+                    </div>
+                    <video id="video-stream" playsinline autoplay muted></video>
+                    <canvas id="hand-overlay" aria-hidden="true"></canvas>
+                </div>
+
+                <div class="stream-note" id="banner-text">Allow camera access, then show a gesture to begin.</div>
+                <p class="panel-hint stream-hint">Hand tracking now runs in your browser and only the landmark data is sent to the server classifier, which keeps the hosted version much more responsive.</p>
+            </section>
+
+            <aside class="side-panel panel">
+                <section class="side-section">
+                    <div class="section-head">
+                        <div>
+                            <p class="panel-kicker">Output</p>
+                            <h2>Sentence Builder</h2>
+                        </div>
+                        <span class="small-tag" id="word-count">0 words</span>
+                    </div>
+
+                    <div class="sentence-box">
+                        <div class="sentence-surface">
+                            <p class="sentence-label">Live Transcript</p>
+                            <p id="sentence-text" class="placeholder">Accepted gestures will appear here.</p>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button class="action primary action-speak" id="btn-speak" data-action="speak">Speak</button>
+                        <button class="action" id="btn-undo" data-action="undo">Undo</button>
+                        <button class="action danger" id="btn-clear" data-action="clear">Clear</button>
+                    </div>
+
+                    <p class="panel-hint">After you press Speak, the sentence stays here until you press Clear.</p>
+                </section>
+
+                <section class="side-section">
+                    <div class="section-head compact-head">
+                        <div>
+                            <p class="panel-kicker">Prediction</p>
+                            <h3>Live Detection</h3>
+                        </div>
+                    </div>
+
+                    <div class="metric-grid">
+                        <article class="metric-card focus">
+                            <span class="metric-label">Stable</span>
+                            <strong class="metric-value" id="stable-prediction">---</strong>
+                        </article>
+                        <article class="metric-card">
+                            <span class="metric-label">Raw</span>
+                            <strong class="metric-value" id="raw-prediction">---</strong>
+                        </article>
+                        <article class="metric-card">
+                            <span class="metric-label">Confidence</span>
+                            <strong class="metric-value" id="confidence-value">0%</strong>
+                        </article>
+                        <article class="metric-card">
+                            <span class="metric-label">Last Accepted</span>
+                            <strong class="metric-value" id="last-accepted">---</strong>
+                        </article>
+                    </div>
+
+                    <div class="candidate-box">
+                        <p class="candidate-label">Top Candidates</p>
+                        <div class="candidate-list" id="top-candidates">
+                            <span class="candidate-pill">Waiting for predictions</span>
+                        </div>
+                        <p class="candidate-note" id="variant-note">Input layout: observed</p>
+                        <p class="candidate-note" id="guard-note">The runtime will hold back shaky Water/Goodbye predictions until the match is clearer.</p>
+                    </div>
+                </section>
+
+                <section class="side-section">
+                    <div class="section-head compact-head">
+                        <div>
+                            <p class="panel-kicker">Runtime</p>
+                            <h3>System State</h3>
+                        </div>
+                    </div>
+
+                    <div class="runtime-grid">
+                        <article class="runtime-card">
+                            <span class="runtime-label">Buffer</span>
+                            <strong id="buffer-status">0 / 25</strong>
+                        </article>
+                        <article class="runtime-card">
+                            <span class="runtime-label">Vote</span>
+                            <strong id="vote-status">0 / 7</strong>
+                        </article>
+                        <article class="runtime-card">
+                            <span class="runtime-label">Cooldown</span>
+                            <strong id="cooldown-status">0</strong>
+                        </article>
+                    </div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script type="module">
+        const runtimeConfig = {{ runtime_config | tojson }};
+
+        const elements = {
+            status: document.getElementById('system-status'),
+            ttsStatus: document.getElementById('tts-status'),
+            statusDot: document.getElementById('status-dot'),
+            hands: document.getElementById('hands-status'),
+            stable: document.getElementById('stable-prediction'),
+            raw: document.getElementById('raw-prediction'),
+            confidence: document.getElementById('confidence-value'),
+            lastAccepted: document.getElementById('last-accepted'),
+            topCandidates: document.getElementById('top-candidates'),
+            variantNote: document.getElementById('variant-note'),
+            guardNote: document.getElementById('guard-note'),
+            sentence: document.getElementById('sentence-text'),
+            wordCount: document.getElementById('word-count'),
+            banner: document.getElementById('banner-text'),
+            loader: document.getElementById('stream-loader'),
+            loaderCopy: document.getElementById('loader-copy'),
+            video: document.getElementById('video-stream'),
+            overlay: document.getElementById('hand-overlay'),
+            streamFrame: document.getElementById('stream-frame'),
+            buffer: document.getElementById('buffer-status'),
+            vote: document.getElementById('vote-status'),
+            cooldown: document.getElementById('cooldown-status'),
+            speakButton: document.getElementById('btn-speak'),
+        };
+
+        const overlayContext = elements.overlay.getContext('2d');
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [0, 9], [9, 10], [10, 11], [11, 12],
+            [0, 13], [13, 14], [14, 15], [15, 16],
+            [0, 17], [17, 18], [18, 19], [19, 20],
+            [5, 9], [9, 13], [13, 17],
+        ];
+
+        let streamReady = false;
+        let sessionReady = false;
+        let trackerReady = false;
+        let requestInFlight = false;
+        let detectionLoopStarted = false;
+        let browserSpeaking = false;
+        let queuedPayload = null;
+        let lastVideoTime = -1;
+        let handLandmarker = null;
+        let FilesetResolverRef = null;
+        let HandLandmarkerRef = null;
+        let framesWithoutHands = 0;
+        let cameraError = false;
+        let sessionError = false;
+        let trackerError = false;
+        let lastDetectionAt = 0;
+        const slotMemory = {
+            L: null,
+            R: null,
+        };
+
+        function setHandsStatusLabel(handsStatus) {
+            elements.hands.textContent = `Hands: ${handsStatus || '--'}`;
+        }
+
+        function updateBootstrapBanner() {
+            if (!streamReady || cameraError || sessionError || trackerError) {
+                return;
+            }
+
+            if (!trackerReady && !sessionReady) {
+                elements.banner.textContent = 'Camera ready. Loading AI runtime...';
+                return;
+            }
+
+            if (!trackerReady) {
+                elements.banner.textContent = 'Camera ready. Loading hand tracker...';
+                return;
+            }
+
+            if (!sessionReady) {
+                elements.banner.textContent = 'Camera ready. Warming the recognition model...';
+                return;
+            }
+
+            elements.banner.textContent = 'Camera ready. Show a gesture to begin.';
+        }
+
+        function markStreamReady() {
+            if (!streamReady) {
+                streamReady = true;
+                resizeOverlay();
+                elements.loader.classList.add('hidden');
+                elements.streamFrame.classList.add('ready');
+            }
+
+            updateBootstrapBanner();
+            startDetectionLoop();
+        }
+
+        function resizeOverlay() {
+            const width = elements.video.videoWidth || runtimeConfig.captureWidth;
+            const height = elements.video.videoHeight || runtimeConfig.captureHeight;
+
+            if (elements.overlay.width !== width) {
+                elements.overlay.width = width;
+            }
+
+            if (elements.overlay.height !== height) {
+                elements.overlay.height = height;
+            }
+        }
+
+        function clearOverlay() {
+            overlayContext.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
+        }
+
+        function getHandCenter(handLandmarks) {
+            if (!Array.isArray(handLandmarks) || !handLandmarks.length) {
+                return { x: 0.5, y: 0.5 };
+            }
+
+            const sum = handLandmarks.reduce((acc, landmark) => {
+                acc.x += landmark.x;
+                acc.y += landmark.y;
+                return acc;
+            }, { x: 0, y: 0 });
+
+            return {
+                x: sum.x / handLandmarks.length,
+                y: sum.y / handLandmarks.length,
+            };
+        }
+
+        function distanceBetween(a, b) {
+            if (!a || !b) {
+                return Number.POSITIVE_INFINITY;
+            }
+
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function resetSlotMemory() {
+            slotMemory.L = null;
+            slotMemory.R = null;
+        }
+
+        function updateState(state) {
+            const detecting = state.status === 'DETECTING';
+            elements.status.textContent = state.status;
+            elements.status.className = detecting ? 'pill active' : 'pill idle';
+            elements.ttsStatus.textContent = browserSpeaking ? 'TTS: Speaking' : `TTS: ${state.tts_status || 'Browser'}`;
+            elements.ttsStatus.className = browserSpeaking ? 'pill busy' : 'pill neutral';
+            elements.statusDot.className = detecting ? 'dot active' : 'dot';
+            setHandsStatusLabel(state.hands || '--');
+            elements.stable.textContent = state.prediction || '---';
+            elements.raw.textContent = state.raw_prediction || '---';
+            elements.confidence.textContent = state.confidence || '0%';
+            elements.lastAccepted.textContent = state.last_accepted || '---';
+            elements.buffer.textContent = `${state.buffer_fill} / ${state.buffer_target}`;
+            elements.vote.textContent = `${state.vote_fill} / ${state.vote_target}`;
+            elements.cooldown.textContent = `${state.cooldown_remaining}`;
+            elements.wordCount.textContent = `${state.word_count} word${state.word_count === 1 ? '' : 's'}`;
+            elements.topCandidates.innerHTML = '';
+
+            const topCandidates = Array.isArray(state.top_candidates) ? state.top_candidates : [];
+            if (topCandidates.length) {
+                topCandidates.forEach((candidate, index) => {
+                    const chip = document.createElement('span');
+                    chip.className = `candidate-pill${index === 0 ? ' active' : ''}`;
+                    chip.textContent = `${candidate.gesture} ${candidate.label}`;
+                    elements.topCandidates.appendChild(chip);
+                });
+            } else {
+                const chip = document.createElement('span');
+                chip.className = 'candidate-pill';
+                chip.textContent = 'Waiting for predictions';
+                elements.topCandidates.appendChild(chip);
+            }
+
+            elements.guardNote.textContent = state.guard_reason
+                ? `Guard: ${state.guard_reason}`
+                : 'The runtime will hold back shaky Water/Goodbye predictions until the match is clearer.';
+            elements.variantNote.textContent = `Input layout: ${state.input_variant || 'observed'}`;
+
+            if (state.sentence) {
+                elements.sentence.textContent = state.sentence;
+                elements.sentence.classList.remove('placeholder');
+            } else {
+                elements.sentence.textContent = 'Accepted gestures will appear here.';
+                elements.sentence.classList.add('placeholder');
+            }
+
+            elements.banner.textContent = state.banner || 'Show a gesture to begin.';
+            elements.speakButton.disabled = browserSpeaking;
+        }
+
+        function deriveHandsStatus(labels) {
+            const unique = new Set(labels.filter(Boolean));
+            if (unique.has('L') && unique.has('R')) {
+                return 'L+R';
+            }
+            if (unique.has('L')) {
+                return 'L';
+            }
+            if (unique.has('R')) {
+                return 'R';
+            }
+            return 'NONE';
+        }
+
+        function toUserHandLabel(rawLabel, index) {
+            if (rawLabel === 'Left') {
+                return 'R';
+            }
+            if (rawLabel === 'Right') {
+                return 'L';
+            }
+            return index === 0 ? 'L' : 'R';
+        }
+
+        function fallbackSlotByPosition(currentHands) {
+            if (currentHands.length !== 2) {
+                return currentHands;
+            }
+
+            const sorted = [...currentHands].sort((a, b) => b.center.x - a.center.x);
+            sorted[0].slot = 'L';
+            sorted[1].slot = 'R';
+            return sorted;
+        }
+
+        function assignHandsToSlots(results) {
+            const hands = results?.landmarks || [];
+            const handednesses = results?.handedness || results?.handednesses || [];
+            const currentHands = hands.map((handLandmarks, index) => {
+                const rawLabel =
+                    handednesses?.[index]?.[0]?.categoryName ||
+                    handednesses?.[index]?.[0]?.displayName ||
+                    '';
+
+                return {
+                    handLandmarks,
+                    rawLabel,
+                    preferredSlot: toUserHandLabel(rawLabel, index),
+                    center: getHandCenter(handLandmarks),
+                    slot: null,
+                };
+            });
+
+            if (!currentHands.length) {
+                framesWithoutHands += 1;
+                if (framesWithoutHands > 8) {
+                    resetSlotMemory();
+                }
+                return [];
+            }
+
+            framesWithoutHands = 0;
+
+            if (currentHands.length === 1) {
+                const hand = currentHands[0];
+                const leftDistance = distanceBetween(hand.center, slotMemory.L);
+                const rightDistance = distanceBetween(hand.center, slotMemory.R);
+
+                if (leftDistance < rightDistance && leftDistance < 0.22) {
+                    hand.slot = 'L';
+                } else if (rightDistance < leftDistance && rightDistance < 0.22) {
+                    hand.slot = 'R';
+                } else {
+                    hand.slot = hand.preferredSlot;
+                }
+            } else if (slotMemory.L && slotMemory.R) {
+                const [first, second] = currentHands;
+                const directCost =
+                    distanceBetween(first.center, slotMemory.L) +
+                    distanceBetween(second.center, slotMemory.R);
+                const swappedCost =
+                    distanceBetween(first.center, slotMemory.R) +
+                    distanceBetween(second.center, slotMemory.L);
+
+                if (directCost <= swappedCost) {
+                    first.slot = 'L';
+                    second.slot = 'R';
+                } else {
+                    first.slot = 'R';
+                    second.slot = 'L';
+                }
+            } else {
+                fallbackSlotByPosition(currentHands);
+            }
+
+            currentHands.forEach((hand) => {
+                if (!hand.slot) {
+                    hand.slot = hand.preferredSlot;
+                }
+                slotMemory[hand.slot] = hand.center;
+            });
+
+            return currentHands;
+        }
+
+        function buildLandmarkPayload(assignedHands) {
+            if (!assignedHands.length) {
+                return { landmarks: null, hands: 'NONE' };
+            }
+
+            const combined = new Array(runtimeConfig.inputFeatures).fill(0);
+            const labels = [];
+
+            assignedHands.forEach((hand) => {
+                const handLandmarks = hand.handLandmarks;
+                if (!Array.isArray(handLandmarks) || !handLandmarks.length) {
+                    return;
+                }
+
+                labels.push(hand.slot);
+
+                const startIndex = hand.slot === 'R' ? runtimeConfig.featuresPerHand : 0;
+                let offset = startIndex;
+
+                handLandmarks.forEach((landmark) => {
+                    combined[offset++] = 1 - landmark.x;
+                    combined[offset++] = landmark.y;
+                    combined[offset++] = landmark.z;
+                });
+            });
+
+            return {
+                landmarks: combined,
+                hands: deriveHandsStatus(labels),
+            };
+        }
+
+        function drawHandOverlay(results) {
+            resizeOverlay();
+            clearOverlay();
+
+            if (!results.length) {
+                return;
+            }
+
+            results.forEach((hand) => {
+                const handLandmarks = hand.handLandmarks;
+                const userLabel = hand.slot;
+                const strokeColor = userLabel === 'L' ? '#55c1b4' : '#f08a48';
+                const fillColor = userLabel === 'L' ? '#dffcf7' : '#fff0df';
+                const width = elements.overlay.width;
+                const height = elements.overlay.height;
+
+                overlayContext.save();
+                overlayContext.lineWidth = 3;
+                overlayContext.strokeStyle = strokeColor;
+                overlayContext.fillStyle = fillColor;
+                overlayContext.shadowColor = 'rgba(0, 0, 0, 0.35)';
+                overlayContext.shadowBlur = 8;
+
+                HAND_CONNECTIONS.forEach(([startIndex, endIndex]) => {
+                    const start = handLandmarks[startIndex];
+                    const end = handLandmarks[endIndex];
+                    if (!start || !end) {
+                        return;
+                    }
+
+                    overlayContext.beginPath();
+                    overlayContext.moveTo(start.x * width, start.y * height);
+                    overlayContext.lineTo(end.x * width, end.y * height);
+                    overlayContext.stroke();
+                });
+
+                handLandmarks.forEach((landmark, landmarkIndex) => {
+                    const radius = landmarkIndex === 0 ? 6 : 4.5;
+                    const x = landmark.x * width;
+                    const y = landmark.y * height;
+
+                    overlayContext.beginPath();
+                    overlayContext.arc(x, y, radius, 0, Math.PI * 2);
+                    overlayContext.fill();
+                });
+
+                const wrist = handLandmarks[0];
+                if (wrist) {
+                    overlayContext.font = '700 18px Manrope';
+                    overlayContext.fillStyle = strokeColor;
+                    overlayContext.fillText(userLabel, (wrist.x * width) - 8, (wrist.y * height) + 28);
+                }
+
+                overlayContext.restore();
+            });
+        }
+
+        async function ensureTasksVisionLoaded() {
+            if (FilesetResolverRef && HandLandmarkerRef) {
+                return;
+            }
+
+            const module = await import(runtimeConfig.tasksVisionUrl);
+            FilesetResolverRef = module.FilesetResolver;
+            HandLandmarkerRef = module.HandLandmarker;
+        }
+
+        async function initializeSession() {
+            sessionError = false;
+            try {
+                const response = await fetch(runtimeConfig.sessionEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    cache: 'no-store',
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'Could not initialize session.');
+                }
+                sessionReady = true;
+                updateState(payload.state);
+                updateBootstrapBanner();
+            } catch (error) {
+                sessionError = true;
+                elements.status.textContent = 'Offline';
+                elements.status.className = 'pill idle';
+                elements.banner.textContent = 'Server session could not be started.';
+                elements.loaderCopy.textContent = error.message;
+            }
+        }
+
+        async function initializeHandTracker() {
+            elements.loaderCopy.textContent = 'Loading browser hand tracker...';
+            trackerError = false;
+
+            try {
+                await ensureTasksVisionLoaded();
+                const vision = await FilesetResolverRef.forVisionTasks(runtimeConfig.wasmRoot);
+                handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: runtimeConfig.handLandmarkerModelPath,
+                        delegate: 'CPU',
+                    },
+                    runningMode: 'VIDEO',
+                    numHands: 2,
+                    minHandDetectionConfidence: runtimeConfig.minHandDetectionConfidence,
+                    minHandPresenceConfidence: runtimeConfig.minHandPresenceConfidence,
+                    minTrackingConfidence: runtimeConfig.minHandTrackingConfidence,
+                });
+
+                trackerReady = true;
+                elements.loaderCopy.textContent = 'Hand tracker ready. Starting live detection...';
+                updateBootstrapBanner();
+            } catch (error) {
+                trackerError = true;
+                elements.status.textContent = 'Tracker Error';
+                elements.status.className = 'pill idle';
+                elements.banner.textContent = 'The browser hand tracker could not start.';
+                elements.loaderCopy.textContent = error.message || 'Could not load MediaPipe in the browser.';
+            }
+        }
+
+        async function setupCamera() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                cameraError = true;
+                elements.status.textContent = 'Unsupported';
+                elements.status.className = 'pill idle';
+                elements.banner.textContent = 'This browser does not support webcam capture.';
+                elements.loaderCopy.textContent = 'Use a modern browser with camera access support.';
+                return;
+            }
+
+            try {
+                cameraError = false;
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: runtimeConfig.captureWidth },
+                        height: { ideal: runtimeConfig.captureHeight },
+                        frameRate: { ideal: runtimeConfig.cameraFrameRate, max: runtimeConfig.cameraFrameRate },
+                    },
+                    audio: false,
+                });
+
+                elements.video.srcObject = stream;
+                await elements.video.play();
+                elements.loaderCopy.textContent = 'Camera connected. Starting browser hand tracking...';
+                markStreamReady();
+            } catch (error) {
+                cameraError = true;
+                elements.status.textContent = 'Camera Blocked';
+                elements.status.className = 'pill idle';
+                elements.banner.textContent = 'Allow camera permission to use live detection.';
+                elements.loaderCopy.textContent = error.message || 'Camera access was blocked.';
+            }
+        }
+
+        async function flushQueuedPayload() {
+            if (requestInFlight || !queuedPayload || !sessionReady) {
+                return;
+            }
+
+            const payload = queuedPayload;
+            queuedPayload = null;
+            requestInFlight = true;
+
+            try {
+                const response = await fetch(runtimeConfig.landmarksEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                    cache: 'no-store',
+                });
+                const responsePayload = await response.json();
+
+                if (!response.ok || !responsePayload.success) {
+                    throw new Error(responsePayload.error || 'Landmark processing failed.');
+                }
+
+                updateState(responsePayload.state);
+            } catch (error) {
+                elements.status.textContent = 'Offline';
+                elements.status.className = 'pill idle';
+                elements.banner.textContent = 'Live inference paused while reconnecting.';
+                if (!browserSpeaking) {
+                    elements.ttsStatus.textContent = 'TTS: Browser';
+                    elements.ttsStatus.className = 'pill neutral';
+                }
+                elements.loaderCopy.textContent = error.message;
+            } finally {
+                requestInFlight = false;
+                if (queuedPayload) {
+                    void flushQueuedPayload();
+                }
+            }
+        }
+
+        function queuePayload(payload) {
+            queuedPayload = payload;
+            void flushQueuedPayload();
+        }
+
+        function startDetectionLoop() {
+            if (detectionLoopStarted) {
+                return;
+            }
+
+            detectionLoopStarted = true;
+
+            const detect = () => {
+                if (!trackerReady || !streamReady || !handLandmarker) {
+                    window.requestAnimationFrame(detect);
+                    return;
+                }
+
+                if (elements.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+                    window.requestAnimationFrame(detect);
+                    return;
+                }
+
+                if (elements.video.currentTime === lastVideoTime) {
+                    window.requestAnimationFrame(detect);
+                    return;
+                }
+
+                const now = performance.now();
+                if (
+                    runtimeConfig.detectionIntervalMs > 0 &&
+                    (now - lastDetectionAt) < runtimeConfig.detectionIntervalMs
+                ) {
+                    window.requestAnimationFrame(detect);
+                    return;
+                }
+
+                lastVideoTime = elements.video.currentTime;
+                lastDetectionAt = now;
+                const results = handLandmarker.detectForVideo(elements.video, now);
+                const assignedHands = assignHandsToSlots(results);
+                const payload = buildLandmarkPayload(assignedHands);
+                setHandsStatusLabel(payload.hands);
+                drawHandOverlay(assignedHands);
+                if (sessionReady) {
+                    queuePayload(payload);
+                }
+                window.requestAnimationFrame(detect);
+            };
+
+            window.requestAnimationFrame(detect);
+        }
+
+        function stopBrowserSpeech() {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            browserSpeaking = false;
+            elements.ttsStatus.textContent = 'TTS: Browser';
+            elements.ttsStatus.className = 'pill neutral';
+            elements.speakButton.disabled = false;
+        }
+
+        function speakInBrowser(text) {
+            if (!text) {
+                return;
+            }
+
+            if (!('speechSynthesis' in window)) {
+                elements.ttsStatus.textContent = 'TTS: Unsupported';
+                elements.ttsStatus.className = 'pill idle';
+                return;
+            }
+
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            browserSpeaking = true;
+            elements.ttsStatus.textContent = 'TTS: Speaking';
+            elements.ttsStatus.className = 'pill busy';
+            elements.speakButton.disabled = true;
+
+            const finishSpeech = () => {
+                browserSpeaking = false;
+                elements.ttsStatus.textContent = 'TTS: Browser';
+                elements.ttsStatus.className = 'pill neutral';
+                elements.speakButton.disabled = false;
+            };
+
+            utterance.onend = finishSpeech;
+            utterance.onerror = finishSpeech;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        async function sendCommand(action) {
+            const button = document.querySelector(`[data-action="${action}"]`);
+            if (button) {
+                button.disabled = true;
+            }
+
+            try {
+                const response = await fetch(`${runtimeConfig.commandEndpoint}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    cache: 'no-store',
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || `Could not ${action}.`);
+                }
+
+                updateState(payload.state);
+
+                if (action === 'clear' && 'speechSynthesis' in window) {
+                    stopBrowserSpeech();
+                }
+
+                if (action === 'speak' && payload.speech_text) {
+                    speakInBrowser(payload.speech_text);
+                }
+            } catch (error) {
+                elements.banner.textContent = error.message;
+            } finally {
+                if (button && (action !== 'speak' || !browserSpeaking)) {
+                    button.disabled = false;
+                }
+            }
+        }
+
+        document.querySelectorAll('[data-action]').forEach((button) => {
+            button.addEventListener('click', () => sendCommand(button.dataset.action));
+        });
+
+        elements.video.addEventListener('loadeddata', () => {
+            markStreamReady();
+        });
+
+        elements.video.addEventListener('error', () => {
+            streamReady = false;
+            clearOverlay();
+            elements.loader.classList.remove('hidden');
+            elements.streamFrame.classList.remove('ready');
+            elements.loaderCopy.textContent = 'Camera preview not available yet. Check permissions and try again.';
+        });
+
+        window.addEventListener('resize', resizeOverlay);
+
+        window.addEventListener('pagehide', () => {
+            stopBrowserSpeech();
+            clearOverlay();
+
+            if (elements.video.srcObject) {
+                elements.video.srcObject.getTracks().forEach((track) => track.stop());
+            }
+
+            handLandmarker?.close?.();
+
+            fetch(runtimeConfig.sessionEndpoint, {
+                method: 'DELETE',
+                keepalive: true,
+            }).catch(() => {});
+        });
+
+        void initializeSession();
+        void initializeHandTracker();
+        void setupCamera();
+        startDetectionLoop();
+    </script>
+</body>
+</html>

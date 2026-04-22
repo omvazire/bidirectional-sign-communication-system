@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AI Communication System logo">
+  <defs>
+    <linearGradient id="accent" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67d9bf" />
+      <stop offset="1" stop-color="#1d9588" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#081420" />
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#accent)" />
+  <path
+    d="M19 46 29.2 18h5.8L45 46h-6.3l-2-5.7h-9.3L25.3 46Zm10.1-11.1H35L32 26.1Z"
+    fill="#062325"
+  />
+  <circle cx="46.5" cy="19.5" r="4.5" fill="#eef7f6" />
+</svg>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head><title>GLB Inspector</title><style>body{background:#111;color:#0f0;font-family:monospace;padding:20px;font-size:13px;}pre{white-space:pre-wrap;}</style></head>
+<body>
+<pre id="output">Loading rigged_hand.glb...</pre>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const loader = new GLTFLoader();
+loader.load('/models/rigged_hand.glb', (gltf) => {
+  const out = [];
+  out.push('=== RIGGED HAND GLB - Full Analysis ===\n');
+  
+  // Animations
+  out.push(`Animations: ${gltf.animations.length}`);
+  gltf.animations.forEach((anim, i) => {
+    out.push(`  Anim[${i}]: "${anim.name}" dur=${anim.duration.toFixed(2)}s tracks=${anim.tracks.length}`);
+    anim.tracks.slice(0, 10).forEach(t => {
+      out.push(`    Track: "${t.name}" type=${t.constructor.name}`);
+    });
+    if (anim.tracks.length > 10) out.push(`    ... and ${anim.tracks.length - 10} more tracks`);
+  });
+  
+  // Full hierarchy
+  out.push('\n=== Scene Hierarchy ===');
+  function traverse(obj, indent = '') {
+    let info = `${indent}[${obj.type}] "${obj.name}"`;
+    if (obj.isMesh) info += ` (verts: ${obj.geometry?.attributes?.position?.count || '?'})`;
+    if (obj.isBone) info += ` [BONE]`;
+    if (obj.isSkinnedMesh) info += ` [SKINNED_MESH]`;
+    
+    // Show position/rotation for bones
+    if (obj.isBone) {
+      info += ` pos=(${obj.position.x.toFixed(3)},${obj.position.y.toFixed(3)},${obj.position.z.toFixed(3)})`;
+    }
+    
+    out.push(info);
+    
+    if (obj.skeleton) {
+      out.push(`${indent}  >>> SKELETON with ${obj.skeleton.bones.length} bones:`);
+      obj.skeleton.bones.forEach((bone, i) => {
+        out.push(`${indent}    Bone[${i}]: "${bone.name}" parent="${bone.parent?.name || 'none'}"`);
+      });
+    }
+    
+    obj.children.forEach(child => traverse(child, indent + '  '));
+  }
+  traverse(gltf.scene);
+  
+  // All bones specifically
+  out.push('\n=== ALL BONES (flat list) ===');
+  const bones = [];
+  gltf.scene.traverse(node => {
+    if (node.isBone) {
+      bones.push(node);
+      out.push(`  "${node.name}" parent="${node.parent?.name || 'ROOT'}" children=[${node.children.map(c=>c.name).join(', ')}]`);
+      out.push(`    localPos: (${node.position.x.toFixed(4)}, ${node.position.y.toFixed(4)}, ${node.position.z.toFixed(4)})`);
+      out.push(`    localRot: (${node.rotation.x.toFixed(4)}, ${node.rotation.y.toFixed(4)}, ${node.rotation.z.toFixed(4)})`);
+    }
+  });
+  out.push(`\nTotal bones: ${bones.length}`);
+  
+  // All meshes
+  out.push('\n=== ALL MESHES ===');
+  gltf.scene.traverse(node => {
+    if (node.isMesh) {
+      const bb = new THREE.Box3().setFromObject(node);
+      const size = bb.getSize(new THREE.Vector3());
+      const mat = node.material;
+      out.push(`  "${node.name}" verts=${node.geometry?.attributes?.position?.count}`);
+      out.push(`    isSkinned: ${node.isSkinnedMesh}`);
+      out.push(`    size: (${size.x.toFixed(3)}, ${size.y.toFixed(3)}, ${size.z.toFixed(3)})`);
+      out.push(`    material: ${mat?.type} color=${mat?.color ? '#'+mat.color.getHexString() : 'none'}`);
+      if (mat?.map) out.push(`    hasTexture: yes`);
+      if (mat?.normalMap) out.push(`    hasNormalMap: yes`);
+      
+      // Morph targets
+      if (node.geometry?.morphAttributes && Object.keys(node.geometry.morphAttributes).length > 0) {
+        out.push(`    MORPH_TARGETS: ${Object.keys(node.geometry.morphAttributes)}`);
+        out.push(`    morphCount: ${node.geometry.morphAttributes.position?.length || 0}`);
+        if (node.morphTargetDictionary) {
+          out.push(`    morphNames: ${JSON.stringify(node.morphTargetDictionary)}`);
+        }
+      }
+    }
+  });
+  
+  // Overall bounds
+  const totalBB = new THREE.Box3().setFromObject(gltf.scene);
+  const totalSize = totalBB.getSize(new THREE.Vector3());
+  const totalCenter = totalBB.getCenter(new THREE.Vector3());
+  out.push(`\n=== Overall Model ===`);
+  out.push(`Size: (${totalSize.x.toFixed(3)}, ${totalSize.y.toFixed(3)}, ${totalSize.z.toFixed(3)})`);
+  out.push(`Center: (${totalCenter.x.toFixed(3)}, ${totalCenter.y.toFixed(3)}, ${totalCenter.z.toFixed(3)})`);
+  out.push(`Min: (${totalBB.min.x.toFixed(3)}, ${totalBB.min.y.toFixed(3)}, ${totalBB.min.z.toFixed(3)})`);
+  out.push(`Max: (${totalBB.max.x.toFixed(3)}, ${totalBB.max.y.toFixed(3)}, ${totalBB.max.z.toFixed(3)})`);
+  
+  document.getElementById('output').textContent = out.join('\n');
+}, (p) => {
+  document.getElementById('output').textContent = `Loading... ${p.loaded ? Math.round(p.loaded/1024) + 'KB' : ''}`;
+}, (err) => {
+  document.getElementById('output').textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>

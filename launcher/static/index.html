@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#081420" />
+    <title>AI POWERED COMMUNICATIONS SYSTEM FOR MUTE AND DEAF</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="shortcut icon" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="background-orb orb-one"></div>
+      <div class="background-orb orb-two"></div>
+      <div class="grid-overlay"></div>
+
+      <header class="hero">
+        <div class="eyebrow">Communication Dashboard</div>
+        <h1>AI Communication System</h1>
+        <p class="hero-copy">
+          Open either workspace from one simple page.
+          Launch the app or open it when you need it.
+        </p>
+      </header>
+
+      <main class="dashboard-grid">
+        <section class="project-panel" data-project="text-to-sign">
+          <div class="panel-topline">
+            <span class="panel-badge">Section 01</span>
+          </div>
+
+          <div class="panel-header">
+            <div>
+              <h2>Text To Sign Studio</h2>
+              <p class="panel-subtitle">
+                Convert typed text into sign animation.
+                Launch the app or open the workspace.
+              </p>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="action-button primary" data-action="launch">Launch Workspace</button>
+            <button class="action-button secondary" data-action="open">Open Workspace</button>
+          </div>
+
+          <p class="panel-status" data-field="message" aria-live="polite">Ready.</p>
+          <p class="sr-only" data-field="hint" aria-hidden="true"></p>
+        </section>
+
+        <section class="project-panel" data-project="sign-translator">
+          <div class="panel-topline">
+            <span class="panel-badge">Section 02</span>
+          </div>
+
+          <div class="panel-header">
+            <div>
+              <h2>Sign Translator Web</h2>
+              <p class="panel-subtitle">
+                Translate sign input into text and speech.
+                Launch the app or open the workspace.
+              </p>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="action-button primary" data-action="launch">Launch Workspace</button>
+            <button class="action-button secondary" data-action="open">Open Workspace</button>
+          </div>
+
+          <p class="panel-status" data-field="message" aria-live="polite">Ready.</p>
+          <p class="sr-only" data-field="hint" aria-hidden="true"></p>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

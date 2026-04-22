@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Hand Orientation Finder</title>
+<style>
+body { margin: 0; background: #111; color: #fff; font-family: monospace; }
+canvas { display: block; }
+#controls { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.85); padding: 15px; border-radius: 8px; width: 340px; font-size: 12px; z-index: 100; }
+#controls h3 { margin: 0 0 8px 0; color: #0f0; }
+.slider-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.slider-row label { width: 140px; font-size: 12px; color: #ff0; }
+.slider-row input[type="range"] { flex: 1; }
+.slider-row span { width: 50px; text-align: right; font-size: 11px; color: #0f0; }
+.section { border-top: 1px solid #444; padding-top: 10px; margin-top: 10px; }
+.section h4 { color: #ff0; margin: 0 0 6px 0; }
+button { background: #333; color: #fff; border: 1px solid #555; padding: 6px 14px; margin: 3px; cursor: pointer; border-radius: 4px; font-size: 12px; }
+button:hover { background: #555; }
+button.active { background: #4a4; border-color: #6c6; }
+#output { position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-size: 12px; color: #0f0; max-width: 500px; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <h3>🖐 Hand Orientation Finder</h3>
+  
+  <div class="section">
+    <h4>GLOBAL ROTATION (Group)</h4>
+    <div class="slider-row">
+      <label>Rot X (pitch)</label>
+      <input type="range" id="gx" min="-3.15" max="3.15" step="0.01" value="0">
+      <span id="gx_v">0.00</span>
+    </div>
+    <div class="slider-row">
+      <label>Rot Y (yaw)</label>
+      <input type="range" id="gy" min="-3.15" max="3.15" step="0.01" value="3.14">
+      <span id="gy_v">3.14</span>
+    </div>
+    <div class="slider-row">
+      <label>Rot Z (roll)</label>
+      <input type="range" id="gz" min="-3.15" max="3.15" step="0.01" value="0">
+      <span id="gz_v">0.00</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h4>POSITION OFFSET</h4>
+    <div class="slider-row">
+      <label>Pos X</label>
+      <input type="range" id="px" min="-2" max="2" step="0.01" value="0">
+      <span id="px_v">0.00</span>
+    </div>
+    <div class="slider-row">
+      <label>Pos Y</label>
+      <input type="range" id="py" min="-2" max="2" step="0.01" value="0">
+      <span id="py_v">0.00</span>
+    </div>
+    <div class="slider-row">
+      <label>Pos Z</label>
+      <input type="range" id="pz" min="-2" max="2" step="0.01" value="0">
+      <span id="pz_v">0.00</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h4>TEST POSES</h4>
+    <button onclick="setPose('rest')">Rest (Open)</button>
+    <button onclick="setPose('fist')">Fist</button>
+    <button onclick="setPose('B')">ASL B</button>
+    <button onclick="setPose('D')">ASL D</button>
+    <button onclick="setPose('L')">ASL L</button>
+    <button onclick="setPose('V')">ASL V</button>
+    <button onclick="setPose('Y')">ASL Y</button>
+  </div>
+
+  <div class="section">
+    <h4>FINGER CURL AXIS TEST</h4>
+    <div class="slider-row">
+      <label>All fingers curl</label>
+      <input type="range" id="curlAll" min="0" max="1.7" step="0.01" value="0">
+      <span id="curlAll_v">0.00</span>
+    </div>
+    <p style="font-size:10px;color:#888;">Drag to see fingers curl. If they curl toward palm = correct axis.</p>
+  </div>
+</div>
+
+<div id="output">Loading...</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0, 0.5, 3.5);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.5, 0);
+controls.update();
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.4);
+dl.position.set(3, 5, 5);
+scene.add(dl);
+scene.add(new THREE.DirectionalLight(0xc4d4ff, 0.5).position.set(-3, 3, -2));
+scene.add(new THREE.GridHelper(4, 20, 0x333333, 0x222222));
+
+let bones = {};
+let restQuats = {};
+let handGroup = null;
+let modelInner = null;
+
+const DEFORM = {
+  thumb: ['thumb_01R_08', 'thumb_02R_09', 'thumb_03R_010'],
+  index: ['index_01R_017', 'index_02R_018', 'index_03R_019'],
+  middle: ['middle_01R_025', 'middle_02R_026', 'middle_03R_027'],
+  ring: ['ring_01R_033', 'ring_02R_034', 'ring_03R_035'],
+  pinky: ['pinky_01R_041', 'pinky_02R_042', 'pinky_03R_043'],
+};
+const BASES = {
+  thumb: 'thumb_baseR_03', index: 'index_baseR_012',
+  middle: 'middle_baseR_020', ring: 'ring_baseR_028', pinky: 'pinky_baseR_036',
+};
+const CTRL_BONES = [
+  'thumb_CtrlR_04','thumb_Ctrl_01R_05','thumb_Ctrl_02R_06','thumb_Ctrl_03R_07',
+  'index_CtrlR_013','index_Ctrl_01R_014','index_Ctrl_02R_015','index_Ctrl_03R_016',
+  'middle_CtrlR_021','middle_Ctrl_01R_022','middle_Ctrl_02R_023','middle_Ctrl_03R_024',
+  'ring_CtrlR_029','ring_Ctrl_01R_030','ring_Ctrl_02R_031','ring_Ctrl_03R_032',
+  'pinky_CtrlR_037','pinky_Ctrl_01R_038','pinky_Ctrl_02R_039','pinky_Ctrl_03R_040',
+];
+
+const loader = new GLTFLoader();
+loader.load('/models/rigged_hand.glb', (gltf) => {
+  const model = gltf.scene;
+  
+  // Collect bones
+  model.traverse(n => {
+    if (n.isBone) {
+      bones[n.name] = n;
+      restQuats[n.name] = n.quaternion.clone();
+    }
+  });
+  
+  // Fix skeleton
+  const allBones = [];
+  model.traverse(n => { if (n.isBone) allBones.push(n); });
+  model.traverse(n => {
+    if (!n.isSkinnedMesh || !n.skeleton) return;
+    const old = n.skeleton;
+    const newBones = old.bones.map(ob => allBones.find(b => b.name === ob.name) || ob);
+    const skel = new THREE.Skeleton(newBones, old.boneInverses.map(bi => bi.clone()));
+    n.skeleton = skel;
+    n.bind(skel, n.bindMatrix.clone());
+  });
+  
+  // Wrapper groups
+  handGroup = new THREE.Group();
+  handGroup.scale.set(0.55, 0.55, 0.55);
+  handGroup.rotation.set(0, Math.PI, 0);
+  
+  modelInner = new THREE.Group();
+  modelInner.add(model);
+  handGroup.add(modelInner);
+  
+  scene.add(handGroup);
+  
+  // Lock ctrl bones
+  for (const name of CTRL_BONES) {
+    const bone = bones[name];
+    const rest = restQuats[name];
+    if (bone && rest) bone.quaternion.copy(rest);
+  }
+  
+  document.getElementById('output').textContent = 
+    'Model loaded! Adjust sliders to find correct orientation.\n' +
+    'Goal: Palm facing you, fingers pointing UP.';
+  
+  console.log('Loaded', Object.keys(bones).length, 'bones');
+});
+
+// Slider bindings
+['gx','gy','gz','px','py','pz','curlAll'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    document.getElementById(id + '_v').textContent = parseFloat(el.value).toFixed(2);
+    updateTransform();
+  });
+});
+
+function updateTransform() {
+  if (!handGroup) return;
+  const gx = parseFloat(document.getElementById('gx').value);
+  const gy = parseFloat(document.getElementById('gy').value);
+  const gz = parseFloat(document.getElementById('gz').value);
+  const px = parseFloat(document.getElementById('px').value);
+  const py = parseFloat(document.getElementById('py').value);
+  const pz = parseFloat(document.getElementById('pz').value);
+  
+  handGroup.rotation.set(gx, gy, gz);
+  if (modelInner) modelInner.position.set(px, py, pz);
+  
+  // Apply curl
+  const curl = parseFloat(document.getElementById('curlAll').value);
+  applyCurlToAll(curl);
+  
+  // Update output
+  document.getElementById('output').textContent = 
+    `Group Rotation: (${gx.toFixed(2)}, ${gy.toFixed(2)}, ${gz.toFixed(2)})\n` +
+    `Inner Position: (${px.toFixed(2)}, ${py.toFixed(2)}, ${pz.toFixed(2)})\n` +
+    `Curl: ${curl.toFixed(2)}\n\n` +
+    `For Hand3D.jsx use:\n` +
+    `  rotation={[${gx.toFixed(3)}, ${gy.toFixed(3)}, ${gz.toFixed(3)}]}\n` +
+    `  position={[${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)}]}`;
+}
+
+function applyCurlToAll(amount) {
+  // Reset all deform bones to rest first
+  for (const [finger, boneNames] of Object.entries(DEFORM)) {
+    for (const name of boneNames) {
+      const bone = bones[name];
+      const rest = restQuats[name];
+      if (bone && rest) bone.quaternion.copy(rest);
+    }
+    const baseName = BASES[finger];
+    const baseBone = bones[baseName];
+    const baseRest = restQuats[baseName];
+    if (baseBone && baseRest) baseBone.quaternion.copy(baseRest);
+  }
+  // Lock ctrl bones
+  for (const name of CTRL_BONES) {
+    const bone = bones[name];
+    const rest = restQuats[name];
+    if (bone && rest) bone.quaternion.copy(rest);
+  }
+  
+  if (amount < 0.01) return;
+  
+  // Apply curl on Z axis
+  for (const [finger, boneNames] of Object.entries(DEFORM)) {
+    const sign = finger === 'thumb' ? -1 : 1;
+    boneNames.forEach((name, i) => {
+      const bone = bones[name];
+      const rest = restQuats[name];
+      if (!bone || !rest) return;
+      const mults = [1, 1, 0.85];
+      const angle = amount * sign * mults[i];
+      const euler = new THREE.Euler(0, 0, 0, 'XYZ');
+      euler.z = angle;
+      const q = new THREE.Quaternion().setFromEuler(euler);
+      bone.quaternion.copy(rest).multiply(q);
+    });
+  }
+}
+
+// Pose presets
+window.setPose = function(name) {
+  // Reset first
+  for (const boneNames of Object.values(DEFORM)) {
+    for (const bn of boneNames) {
+      const bone = bones[bn]; const rest = restQuats[bn];
+      if (bone && rest) bone.quaternion.copy(rest);
+    }
+  }
+  for (const bn of Object.values(BASES)) {
+    const bone = bones[bn]; const rest = restQuats[bn];
+    if (bone && rest) bone.quaternion.copy(rest);
+  }
+  for (const name of CTRL_BONES) {
+    const bone = bones[name]; const rest = restQuats[name];
+    if (bone && rest) bone.quaternion.copy(rest);
+  }
+  
+  document.getElementById('curlAll').value = 0;
+  document.getElementById('curlAll_v').textContent = '0.00';
+  
+  if (name === 'rest') return;
+  
+  const curlBone = (boneName, axis, angle) => {
+    const bone = bones[boneName]; const rest = restQuats[boneName];
+    if (!bone || !rest) return;
+    const e = new THREE.Euler(0,0,0,'XYZ');
+    e[axis] = angle;
+    bone.quaternion.copy(rest).multiply(new THREE.Quaternion().setFromEuler(e));
+  };
+  
+  if (name === 'fist') {
+    // Curl all fingers
+    for (const [finger, boneNames] of Object.entries(DEFORM)) {
+      const sign = finger === 'thumb' ? -1 : 1;
+      boneNames.forEach((bn, i) => curlBone(bn, 'z', 1.5 * sign * [0.9,1,0.8][i]));
+    }
+  } else if (name === 'B') {
+    // Flat - thumb tucked
+    curlBone('thumb_01R_08', 'z', -0.8);
+    curlBone('thumb_02R_09', 'z', -0.4);
+  } else if (name === 'D') {
+    // Index straight, others curled
+    for (const [finger, boneNames] of Object.entries(DEFORM)) {
+      if (finger === 'index') continue;
+      const sign = finger === 'thumb' ? -1 : 1;
+      const mults = finger === 'thumb' ? [0.6,0.3,0] : [0.9,1,0.8];
+      boneNames.forEach((bn, i) => curlBone(bn, 'z', 1.5 * sign * mults[i]));
+    }
+  } else if (name === 'L') {
+    // Thumb out, index up, others curled
+    for (const [finger, boneNames] of Object.entries(DEFORM)) {
+      if (finger === 'thumb' || finger === 'index') continue;
+      boneNames.forEach((bn, i) => curlBone(bn, 'z', 1.5 * [0.9,1,0.8][i]));
+    }
+    curlBone(BASES.thumb, 'y', 0.7);
+  } else if (name === 'V') {
+    // Index and middle up, others curled
+    for (const [finger, boneNames] of Object.entries(DEFORM)) {
+      if (finger === 'index' || finger === 'middle') continue;
+      const sign = finger === 'thumb' ? -1 : 1;
+      const mults = finger === 'thumb' ? [0.5,0.2,0] : [0.9,1,0.8];
+      boneNames.forEach((bn, i) => curlBone(bn, 'z', 1.5 * sign * mults[i]));
+    }
+    curlBone(BASES.index, 'y', 0.2);
+    curlBone(BASES.middle, 'y', -0.2);
+  } else if (name === 'Y') {
+    // Thumb and pinky out, others curled
+    for (const [finger, boneNames] of Object.entries(DEFORM)) {
+      if (finger === 'thumb' || finger === 'pinky') continue;
+      boneNames.forEach((bn, i) => curlBone(bn, 'z', 1.5 * [0.9,1,0.8][i]));
+    }
+    curlBone(BASES.thumb, 'y', 0.7);
+    curlBone(BASES.pinky, 'y', -0.3);
+  }
+};
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

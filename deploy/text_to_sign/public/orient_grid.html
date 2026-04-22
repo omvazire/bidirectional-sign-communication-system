@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head><title>Orientation Grid</title>
+<style>body{margin:0;background:#111;color:#fff;font-family:monospace;display:flex;flex-wrap:wrap;gap:4px;padding:4px;}
+.cell{width:240px;height:280px;position:relative;background:#1a1a2e;border:1px solid #333;border-radius:4px;}
+.cell canvas{width:100%;height:100%;}
+.label{position:absolute;bottom:4px;left:4px;font-size:10px;color:#0f0;background:rgba(0,0,0,0.7);padding:2px 6px;border-radius:3px;}
+</style></head>
+<body>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const loader = new GLTFLoader();
+const PI = Math.PI;
+
+// Try these orientations
+const ROTS = [
+  [0, 0, 0, 'No rotation'],
+  [PI, 0, 0, 'X=PI'],
+  [0, PI, 0, 'Y=PI (current)'],
+  [0, PI/2, 0, 'Y=PI/2'],
+  [0, -PI/2, 0, 'Y=-PI/2'],
+  [PI, PI, 0, 'X=PI Y=PI'],
+  [PI, PI/2, 0, 'X=PI Y=PI/2'],
+  [PI, -PI/2, 0, 'X=PI Y=-PI/2'],
+  [-PI/2, PI, 0, 'X=-PI/2 Y=PI'],
+  [PI/2, 0, 0, 'X=PI/2'],
+  [-PI/2, 0, 0, 'X=-PI/2'],
+  [0, 0, PI/2, 'Z=PI/2'],
+];
+
+loader.load('./models/rigged_hand.glb', (gltf) => {
+  ROTS.forEach(([rx, ry, rz, label]) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const lbl = document.createElement('div');
+    lbl.className = 'label';
+    lbl.textContent = label;
+    cell.appendChild(lbl);
+    document.body.appendChild(cell);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    const cam = new THREE.PerspectiveCamera(38, 240/240, 0.01, 100);
+    cam.position.set(0, 0.5, 3);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+    dl.position.set(3, 5, 5);
+    scene.add(dl);
+    scene.add(new THREE.DirectionalLight(0xc4d4ff, 0.4).position.set(-3, 3, -2));
+
+    // Clone model
+    const model = gltf.scene.clone(true);
+    const allBones = [];
+    model.traverse(n => { if (n.isBone) allBones.push(n); });
+    model.traverse(n => {
+      if (!n.isSkinnedMesh || !n.skeleton) return;
+      const old = n.skeleton;
+      const nb = old.bones.map(ob => allBones.find(b => b.name === ob.name) || ob);
+      const skel = new THREE.Skeleton(nb, old.boneInverses.map(bi => bi.clone()));
+      n.skeleton = skel;
+      n.bind(skel, n.bindMatrix.clone());
+    });
+
+    const group = new THREE.Group();
+    group.scale.set(0.45, 0.45, 0.45);
+    group.rotation.set(rx, ry, rz);
+    group.add(model);
+
+    // Auto center
+    const box = new THREE.Box3().setFromObject(group);
+    const center = box.getCenter(new THREE.Vector3());
+    group.position.sub(center);
+    group.position.y += 0.5;
+
+    scene.add(group);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(240, 240);
+    renderer.setPixelRatio(1);
+    cell.insertBefore(renderer.domElement, lbl);
+    renderer.render(scene, cam);
+  });
+});
+</script>
+</body>
+</html>

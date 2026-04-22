@@ -573,17 +573,32 @@
             try {
                 await ensureTasksVisionLoaded();
                 const vision = await FilesetResolverRef.forVisionTasks(runtimeConfig.wasmRoot);
-                handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: runtimeConfig.handLandmarkerModelPath,
-                        delegate: 'CPU',
-                    },
-                    runningMode: 'VIDEO',
-                    numHands: 2,
-                    minHandDetectionConfidence: runtimeConfig.minHandDetectionConfidence,
-                    minHandPresenceConfidence: runtimeConfig.minHandPresenceConfidence,
-                    minTrackingConfidence: runtimeConfig.minHandTrackingConfidence,
-                });
+                try {
+                    handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: runtimeConfig.handLandmarkerModelPath,
+                            delegate: 'GPU',
+                        },
+                        runningMode: 'VIDEO',
+                        numHands: 2,
+                        minHandDetectionConfidence: runtimeConfig.minHandDetectionConfidence,
+                        minHandPresenceConfidence: runtimeConfig.minHandPresenceConfidence,
+                        minTrackingConfidence: runtimeConfig.minHandTrackingConfidence,
+                    });
+                } catch (gpuError) {
+                    console.warn("GPU delegate failed, falling back to CPU", gpuError);
+                    handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
+                        baseOptions: {
+                            modelAssetPath: runtimeConfig.handLandmarkerModelPath,
+                            delegate: 'CPU',
+                        },
+                        runningMode: 'VIDEO',
+                        numHands: 2,
+                        minHandDetectionConfidence: runtimeConfig.minHandDetectionConfidence,
+                        minHandPresenceConfidence: runtimeConfig.minHandPresenceConfidence,
+                        minTrackingConfidence: runtimeConfig.minHandTrackingConfidence,
+                    });
+                }
 
                 trackerReady = true;
                 elements.loaderCopy.textContent = 'Hand tracker ready. Starting live detection...';

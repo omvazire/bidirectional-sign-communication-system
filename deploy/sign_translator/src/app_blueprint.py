@@ -42,8 +42,7 @@ SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "900"))
 MAX_ACTIVE_SESSIONS = int(os.getenv("MAX_ACTIVE_SESSIONS", "6"))
 MAX_FRAME_BYTES = int(os.getenv("MAX_FRAME_BYTES", str(2 * 1024 * 1024)))
 HAND_LANDMARKER_MODEL_PATH = os.path.join(config.MODELS_DIR, "hand_landmarker.task")
-MEDIAPIPE_VISION_BUNDLE = "vendor/mediapipe/tasks-vision/vision_bundle.mjs"
-MEDIAPIPE_WASM_ROOT = "vendor/mediapipe/tasks-vision/wasm"
+MEDIAPIPE_TASKS_VISION_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12"
 
 
 # ── Session management (same as original app.py) ───────────────────────
@@ -219,8 +218,8 @@ def index():
         "landmarksEndpoint": url_for("sign_translator.api_landmarks"),
         "sessionEndpoint": url_for("sign_translator.api_session"),
         "commandEndpoint": command_endpoint,
-        "tasksVisionUrl": url_for("sign_translator.static", filename=MEDIAPIPE_VISION_BUNDLE),
-        "wasmRoot": url_for("sign_translator.static", filename=MEDIAPIPE_WASM_ROOT),
+        "tasksVisionUrl": f"{MEDIAPIPE_TASKS_VISION_URL}/vision_bundle.mjs",
+        "wasmRoot": f"{MEDIAPIPE_TASKS_VISION_URL}/wasm",
         "handLandmarkerModelPath": url_for("sign_translator.browser_hand_landmarker_model"),
     }
     return render_template(

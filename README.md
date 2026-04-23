@@ -36,6 +36,33 @@
 
 <hr>
 
+<h2>👨‍💻 Team Contributions</h2>
+
+<p>
+This project was developed collaboratively, with each team member contributing to key components of the system:
+</p>
+
+<ul>
+  <li>
+    <b>Ayush Shailendra Vishwakarma</b> — Developed the initial static sign model and laid the foundational structure for gesture representation, which served as the base for further system development.
+  </li>
+
+  <li>
+    <b>Shubham Brijesh Tripathi</b> — Built the Sign-to-Text recognition pipeline, including gesture classification using machine learning and integration of Text-to-Speech (TTS) functionality.
+  </li>
+
+  <li>
+    <b>Om Prabhakar Vazire</b> — Developed the Text-to-Sign module, including translation logic and 3D hand sign visualization using modern web technologies.
+  </li>
+</ul>
+
+<p>
+All team members actively collaborated in integrating components, debugging, improving system performance, and enhancing the overall functionality of the project.
+</p>
+
+
+
+<hr>
 <h2>📌 Overview</h2>
 
 <p>
